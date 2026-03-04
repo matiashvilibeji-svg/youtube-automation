@@ -101,3 +101,12 @@ If that fails, do a full `rm -rf node_modules package-lock.json && npm install &
 ## Claude AI Configuration
 
 Model: `claude-sonnet-4-20250514` with `generate_pipeline` tool. System prompt and tool schema are in `src/lib/constants.js`. The skeleton character description is injected into every image prompt by Claude (per system prompt rules).
+
+## Git & Deployment
+
+**Remote:** `git@github-svg:matiashvilibeji-svg/youtube-automation.git` (branch: `main`)
+
+**When the user asks to "push":** commit all staged/unstaged changes with a descriptive message and push to `origin main`:
+```bash
+git add -A && git commit -m "descriptive message" && git push origin main
+```

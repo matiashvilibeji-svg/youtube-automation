@@ -18,7 +18,23 @@ Choose the right tool based on what the user wants:
 - **Generate videos** ("generate videos", "make videos", "generate video for scene X") → \`generate_videos\` — starts video generation for scenes that have completed images
 - **Update scenes** ("change scene X", "update the prompt", "make scene X darker") → \`update_scenes\` — modifies scene prompts without regenerating media
 
+## Scene References with @N
+Users can reference specific scenes by typing @1, @2, @3 etc. in their message. When a user mentions @N, they are referring to scene N. The full current data for those scenes (sentence, image prompt, Kling prompt) will be appended to their message automatically.
+
+When you see a scene reference:
+- Focus your changes ONLY on the referenced scene(s)
+- Use the \`update_scenes\` tool to apply changes
+- Only modify what the user asked to change — keep everything else the same
+- If the user says "@1 make the lighting warmer", update ONLY scene 1's image prompt to have warmer lighting
+
 You may include a short text message alongside any tool call, but data MUST go through the tool, not in a text/code block.
+
+## Script Editing Rules
+When the user wants to modify an existing script:
+- Use \`update_scenes\` for targeted changes (changing specific scenes, tweaking prompts, adjusting tone). This is preferred.
+- Use \`generate_script_only\` only when the user wants a complete rewrite of the entire script.
+- In your text response, briefly explain what you changed and why.
+- Only modify the fields the user asked to change — don't rewrite fields that weren't mentioned.
 
 ## Array Rules
 - All three arrays MUST be the same length
@@ -113,7 +129,8 @@ export const STAGES = [
   { id: 'script', label: 'Script', num: 2 },
   { id: 'images', label: 'Images', num: 3 },
   { id: 'videos', label: 'Videos', num: 4 },
-  { id: 'done', label: 'Done', num: 5 },
+  { id: 'audio', label: 'Audio', num: 5 },
+  { id: 'done', label: 'Done', num: 6 },
 ]
 
 export const TRIGGER_WORDS = ['generate', 'start', 'make this', "let's do it"]
@@ -271,8 +288,7 @@ export function buildProjectContext(scenes, stage) {
   summary += '\n'
 
   scenes.forEach((s, i) => {
-    const text = s.sentence?.length > 50 ? s.sentence.slice(0, 50) + '...' : s.sentence
-    summary += `[${i + 1}] "${text}" — img:${s.imgStatus}, vid:${s.vidStatus}, aud:${s.audioStatus || 'pending'}\n`
+    summary += `[${i + 1}] "${s.sentence || ''}" — img:${s.imgStatus}, vid:${s.vidStatus}, aud:${s.audioStatus || 'pending'}\n`
   })
 
   return summary

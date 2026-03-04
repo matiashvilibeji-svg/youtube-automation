@@ -33,11 +33,11 @@ export default function useApiKeys() {
   }, [])
 
   const hasAllKeys = Boolean(
-    apiKeys.claude && apiKeys.gemini && apiKeys.klingAccessKey && apiKeys.klingSecretKey
+    apiKeys.claude && apiKeys.nanoBanana && apiKeys.klingAccessKey && apiKeys.klingSecretKey
   )
   const missingKeys = []
   if (!apiKeys.claude) missingKeys.push('Claude')
-  if (!apiKeys.gemini) missingKeys.push('Gemini')
+  if (!apiKeys.nanoBanana) missingKeys.push('Nano Banana')
   if (!apiKeys.klingAccessKey || !apiKeys.klingSecretKey) missingKeys.push('Kling')
 
   return { apiKeys, saveKeys, hasAllKeys, missingKeys, envDefaults }

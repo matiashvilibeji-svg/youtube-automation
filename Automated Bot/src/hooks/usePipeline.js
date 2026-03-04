@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { generateAndPollImage } from '../lib/geminiImageApi'
+import { generateAndPollImage } from '../lib/nanoBananaApi'
 import { generateAndPollVideo } from '../lib/klingApi'
 import { generateSpeech } from '../lib/elevenLabsApi'
-import { IMAGE_BATCH_SIZE, VIDEO_BATCH_SIZE, AUDIO_BATCH_SIZE } from '../lib/constants'
+import { IMAGE_BATCH_SIZE, VIDEO_BATCH_SIZE } from '../lib/constants'
 import { supabase } from '../lib/supabase'
 
 export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projectId, onStageChange }) {
@@ -12,6 +12,8 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
   const [isRunning, setIsRunning] = useState(false)
   const abortRef = useRef(null)
   const videoSemaphoreRef = useRef(0)
+  const [transcriptAudio, setTranscriptAudio] = useState({ status: 'pending', url: null })
+  const transcriptAudioAbortRef = useRef(null)
   const sceneAbortRefs = useRef(new Map()) // per-scene AbortControllers keyed by 'img-{idx}' / 'vid-{idx}'
 
   // Wrap setScenes to keep ref in sync
@@ -123,7 +125,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
   // --- Per-scene generation methods ---
 
   const generateSingleImage = useCallback(async (idx) => {
-    if (!apiKeys.gemini) { onMissingKeys(); return }
+    if (!apiKeys.nanoBanana) { onMissingKeys(); return }
 
     // Abort any existing generation for this scene
     const key = `img-${idx}`
@@ -141,7 +143,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
         console.warn(`Scene ${idx}: missing or invalid imagePrompt`, currentPrompt)
         throw new Error(`Scene ${idx + 1} has no image prompt`)
       }
-      const { imageUrl } = await generateAndPollImage(apiKeys.gemini, currentPrompt, controller.signal)
+      const { imageUrl } = await generateAndPollImage(apiKeys.nanoBanana, currentPrompt, controller.signal)
       updateScene(idx, { imgStatus: 'done', imageUrl })
       onActivity?.('image_done', `Scene ${idx + 1} image done`, idx)
     } catch (err) {
@@ -152,7 +154,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     } finally {
       sceneAbortRefs.current.delete(key)
     }
-  }, [apiKeys.gemini, onMissingKeys, onActivity, updateScene])
+  }, [apiKeys.nanoBanana, onMissingKeys, onActivity, updateScene])
 
   const generateSingleVideo = useCallback(async (idx) => {
     if (!apiKeys.klingAccessKey || !apiKeys.klingSecretKey) { onMissingKeys(); return }
@@ -187,41 +189,44 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     }
   }, [apiKeys.klingAccessKey, apiKeys.klingSecretKey, onMissingKeys, onActivity, updateScene])
 
-  const generateSingleAudio = useCallback(async (idx) => {
+  const generateTranscriptAudio = useCallback(async () => {
     if (!apiKeys.elevenLabs) return
 
-    const key = `aud-${idx}`
-    sceneAbortRefs.current.get(key)?.abort()
+    // Abort any existing transcript audio generation
+    transcriptAudioAbortRef.current?.abort()
     const controller = new AbortController()
-    sceneAbortRefs.current.set(key, controller)
+    transcriptAudioAbortRef.current = controller
 
     // Revoke existing blob URL to avoid memory leaks
-    const existingUrl = scenesRef.current[idx]?.audioUrl
-    if (existingUrl && existingUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(existingUrl)
-    }
+    setTranscriptAudio((prev) => {
+      if (prev.url && prev.url.startsWith('blob:')) URL.revokeObjectURL(prev.url)
+      return { status: 'loading', url: null }
+    })
 
-    updateScene(idx, { audioStatus: 'loading', audioUrl: null })
-    onActivity?.('audio_loading', `Scene ${idx + 1} audio generating...`, idx)
+    updateStage('audio')
+    onActivity?.('audio_loading', 'Generating transcript audio...')
 
     try {
-      // Strip [N] prefix from sentence before TTS
-      const rawSentence = scenesRef.current[idx]?.sentence || ''
-      const text = rawSentence.replace(/^\[\d+\]\s*/, '')
-      if (!text) throw new Error(`Scene ${idx + 1} has no sentence text`)
+      // Combine all sentences into one transcript, stripping [N] prefixes
+      const fullText = scenesRef.current
+        .map((s) => (s.sentence || '').replace(/^\[\d+\]\s*/, ''))
+        .filter(Boolean)
+        .join(' ')
 
-      const { audioUrl } = await generateSpeech(apiKeys.elevenLabs, text, undefined, controller.signal)
-      updateScene(idx, { audioStatus: 'done', audioUrl })
-      onActivity?.('audio_done', `Scene ${idx + 1} audio done`, idx)
+      if (!fullText) throw new Error('No sentence text to generate audio from')
+
+      const { audioUrl } = await generateSpeech(apiKeys.elevenLabs, fullText, undefined, controller.signal)
+      setTranscriptAudio({ status: 'done', url: audioUrl })
+      onActivity?.('audio_done', 'Transcript audio done')
     } catch (err) {
       if (err.name === 'AbortError') return
-      console.error(`Audio gen failed for scene ${idx}:`, err)
-      updateScene(idx, { audioStatus: 'error' })
-      onActivity?.('audio_error', `Scene ${idx + 1} audio failed: ${err.message}`, idx)
+      console.error('Transcript audio gen failed:', err)
+      setTranscriptAudio({ status: 'error', url: null })
+      onActivity?.('audio_error', `Transcript audio failed: ${err.message}`)
     } finally {
-      sceneAbortRefs.current.delete(key)
+      transcriptAudioAbortRef.current = null
     }
-  }, [apiKeys.elevenLabs, onActivity, updateScene])
+  }, [apiKeys.elevenLabs, onActivity, updateStage])
 
   const cancelSceneGeneration = useCallback((type, idx) => {
     const key = `${type}-${idx}`
@@ -229,12 +234,19 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     if (controller) {
       controller.abort()
       sceneAbortRefs.current.delete(key)
-      const statusField = type === 'img' ? 'imgStatus' : type === 'aud' ? 'audioStatus' : 'vidStatus'
+      const statusField = type === 'img' ? 'imgStatus' : 'vidStatus'
       updateScene(idx, { [statusField]: 'pending' })
-      const typeLabel = type === 'img' ? 'image' : type === 'aud' ? 'audio' : 'video'
+      const typeLabel = type === 'img' ? 'image' : 'video'
       onActivity?.(`${typeLabel}_cancelled`, `Scene ${idx + 1} ${typeLabel} cancelled`, idx)
     }
   }, [updateScene, onActivity])
+
+  const cancelTranscriptAudio = useCallback(() => {
+    transcriptAudioAbortRef.current?.abort()
+    transcriptAudioAbortRef.current = null
+    setTranscriptAudio({ status: 'pending', url: null })
+    onActivity?.('audio_cancelled', 'Transcript audio cancelled')
+  }, [onActivity])
 
   // --- Granular pipeline methods ---
 
@@ -278,7 +290,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
   }, [projectId, updateStage, onActivity])
 
   const generateImagesForScenes = useCallback(async (indices) => {
-    if (!apiKeys.gemini) { onMissingKeys(); return }
+    if (!apiKeys.nanoBanana) { onMissingKeys(); return }
 
     updateStage('images')
     onActivity?.('stage_change', `Generating images for ${indices.length} scene(s)`)
@@ -292,7 +304,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     for (const batch of batches) {
       await Promise.all(batch.map((idx) => generateSingleImage(idx)))
     }
-  }, [apiKeys.gemini, onMissingKeys, onActivity, updateStage, generateSingleImage])
+  }, [apiKeys.nanoBanana, onMissingKeys, onActivity, updateStage, generateSingleImage])
 
   const generateVideosForScenes = useCallback(async (indices) => {
     if (!apiKeys.klingAccessKey || !apiKeys.klingSecretKey) { onMissingKeys(); return }
@@ -308,25 +320,21 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     }
 
     updateStage('videos')
-    onActivity?.('stage_change', `Generating videos for ${validIndices.length} scene(s)`)
+    onActivity?.('stage_change', `Generating videos for ${validIndices.length} scene(s) — one at a time`)
 
-    await Promise.all(validIndices.map((idx) => generateSingleVideo(idx)))
+    // Process videos ONE AT A TIME to respect Kling concurrency limits
+    for (const idx of validIndices) {
+      // Re-check image readiness right before starting (state may have changed)
+      const scene = scenesRef.current[idx]
+      if (scene?.imgStatus !== 'done' || !scene?.imageUrl) {
+        onActivity?.('video_error', `Scene ${idx + 1}: skipped — image not ready`, idx)
+        continue
+      }
+      await generateSingleVideo(idx)
+    }
   }, [apiKeys.klingAccessKey, apiKeys.klingSecretKey, onMissingKeys, onActivity, updateStage, generateSingleVideo])
 
-  const generateAudioForScenes = useCallback(async (indices) => {
-    if (!apiKeys.elevenLabs) return
-
-    onActivity?.('stage_change', `Generating audio for ${indices.length} scene(s)`)
-
-    const batches = []
-    for (let i = 0; i < indices.length; i += AUDIO_BATCH_SIZE) {
-      batches.push(indices.slice(i, i + AUDIO_BATCH_SIZE))
-    }
-
-    for (const batch of batches) {
-      await Promise.all(batch.map((idx) => generateSingleAudio(idx)))
-    }
-  }, [apiKeys.elevenLabs, onActivity, generateSingleAudio])
+  // generateAudioForScenes is now just generateTranscriptAudio (single call for whole transcript)
 
   const updateScenePrompts = useCallback((updates) => {
     for (const { idx, ...fields } of updates) {
@@ -337,7 +345,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
 
   const startPipeline = useCallback(async (pipelineData) => {
     // Check for required keys
-    if (!apiKeys.gemini || !apiKeys.klingAccessKey || !apiKeys.klingSecretKey) {
+    if (!apiKeys.nanoBanana || !apiKeys.klingAccessKey || !apiKeys.klingSecretKey) {
       onMissingKeys()
       return
     }
@@ -395,7 +403,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
       updateScene(idx, { imgStatus: 'loading' })
       onActivity?.('image_loading', `Scene ${idx + 1} image generating...`, idx)
       try {
-        const { imageUrl } = await generateAndPollImage(apiKeys.gemini, newScenes[idx].imagePrompt, signal)
+        const { imageUrl } = await generateAndPollImage(apiKeys.nanoBanana, newScenes[idx].imagePrompt, signal)
         updateScene(idx, { imgStatus: 'done', imageUrl })
         onActivity?.('image_done', `Scene ${idx + 1} image done`, idx)
       } catch (err) {
@@ -403,42 +411,25 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
         console.error(`Image gen failed for scene ${idx}:`, err)
         updateScene(idx, { imgStatus: 'error', imgError: err.message })
         onActivity?.('image_error', `Scene ${idx + 1} image failed: ${err.message}`, idx)
-        // Image failed — skip video but still attempt audio (audio only needs text)
-        if (apiKeys.elevenLabs) {
-          await generateSingleAudio(idx)
-        }
         continue
       }
 
       if (signal.aborted) break
 
-      // 2. Generate video + audio in parallel (video needs image, audio only needs text)
+      // 2. Generate video (uses captured imageUrl, not scenesRef — avoids React state race)
       updateStage('videos')
-      const tasks = []
-
-      // Video (only if image succeeded — which it did if we got here)
-      tasks.push((async () => {
-        updateScene(idx, { vidStatus: 'loading' })
-        onActivity?.('video_loading', `Scene ${idx + 1} video generating...`, idx)
-        try {
-          const scene = scenesRef.current[idx]
-          const { videoUrl } = await generateAndPollVideo(apiKeys.klingAccessKey, apiKeys.klingSecretKey, scene.imageUrl, newScenes[idx].klingPrompt, signal)
-          updateScene(idx, { vidStatus: 'done', videoUrl })
-          onActivity?.('video_done', `Scene ${idx + 1} video done`, idx)
-        } catch (err) {
-          if (err.name === 'AbortError') return
-          console.error(`Video gen failed for scene ${idx}:`, err)
-          updateScene(idx, { vidStatus: 'error', vidError: err.message })
-          onActivity?.('video_error', `Scene ${idx + 1} video failed: ${err.message}`, idx)
-        }
-      })())
-
-      // Audio (if ElevenLabs key is configured)
-      if (apiKeys.elevenLabs) {
-        tasks.push(generateSingleAudio(idx))
+      updateScene(idx, { vidStatus: 'loading' })
+      onActivity?.('video_loading', `Scene ${idx + 1} video generating...`, idx)
+      try {
+        const { videoUrl } = await generateAndPollVideo(apiKeys.klingAccessKey, apiKeys.klingSecretKey, imageUrl, newScenes[idx].klingPrompt, signal)
+        updateScene(idx, { vidStatus: 'done', videoUrl })
+        onActivity?.('video_done', `Scene ${idx + 1} video done`, idx)
+      } catch (err) {
+        if (err.name === 'AbortError') break
+        console.error(`Video gen failed for scene ${idx}:`, err)
+        updateScene(idx, { vidStatus: 'error', vidError: err.message })
+        onActivity?.('video_error', `Scene ${idx + 1} video failed: ${err.message}`, idx)
       }
-
-      await Promise.all(tasks)
 
       // Switch back to images stage for next scene's image
       if (idx < newScenes.length - 1 && !signal.aborted) {
@@ -446,12 +437,17 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
       }
     }
 
+    // --- AUDIO STAGE (after all videos) ---
+    if (!signal.aborted && apiKeys.elevenLabs) {
+      await generateTranscriptAudio()
+    }
+
     if (!signal.aborted) {
       updateStage('done')
       setIsRunning(false)
       onActivity?.('pipeline_done', 'Pipeline complete')
     }
-  }, [apiKeys.gemini, apiKeys.klingAccessKey, apiKeys.klingSecretKey, apiKeys.elevenLabs, onMissingKeys, onActivity, projectId, updateScene, updateStage, generateSingleAudio])
+  }, [apiKeys.nanoBanana, apiKeys.klingAccessKey, apiKeys.klingSecretKey, apiKeys.elevenLabs, onMissingKeys, onActivity, projectId, updateScene, updateStage, generateTranscriptAudio])
 
   const cancelPipeline = useCallback(() => {
     abortRef.current?.abort()
@@ -461,12 +457,12 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
 
   const resetPipeline = useCallback(async () => {
     abortRef.current?.abort()
-    // Revoke audio blob URLs to free memory
-    for (const scene of scenesRef.current) {
-      if (scene.audioUrl && scene.audioUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(scene.audioUrl)
-      }
-    }
+    transcriptAudioAbortRef.current?.abort()
+    // Revoke transcript audio blob URL
+    setTranscriptAudio((prev) => {
+      if (prev.url && prev.url.startsWith('blob:')) URL.revokeObjectURL(prev.url)
+      return { status: 'pending', url: null }
+    })
     setScenesAndRef([])
     setStage('ideas')
     setIsRunning(false)
@@ -478,5 +474,5 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     }
   }, [projectId])
 
-  return { scenes, stage, isRunning, startPipeline, cancelPipeline, resetPipeline, setScenes: setScenesAndRef, updateScene, generateSingleImage, generateSingleVideo, generateSingleAudio, cancelSceneGeneration, initScenesOnly, generateImagesForScenes, generateVideosForScenes, generateAudioForScenes, updateScenePrompts }
+  return { scenes, stage, isRunning, transcriptAudio, startPipeline, cancelPipeline, resetPipeline, setScenes: setScenesAndRef, updateScene, generateSingleImage, generateSingleVideo, generateTranscriptAudio, cancelTranscriptAudio, cancelSceneGeneration, initScenesOnly, generateImagesForScenes, generateVideosForScenes, updateScenePrompts }
 }

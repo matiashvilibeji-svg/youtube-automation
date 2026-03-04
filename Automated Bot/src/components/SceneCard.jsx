@@ -1,3 +1,5 @@
+import { downloadFile } from '../lib/download'
+
 const statusIcon = {
   pending: <span className="text-gray-600">&#9675;</span>,
   loading: <span className="text-yellow-400 animate-spin-slow inline-block">&#10227;</span>,
@@ -55,16 +57,13 @@ export default function SceneCard({
   onOpenVideo,
   onGenerateImage,
   onGenerateVideo,
-  onGenerateAudio,
   onCancelImage,
   onCancelVideo,
-  onCancelAudio,
   showImageActions,
   showVideoActions,
-  showAudioActions,
   isRunning,
 }) {
-  const { sentence, imgStatus, vidStatus, audioStatus, imageUrl, videoUrl, audioUrl, imgError, vidError } = scene
+  const { sentence, imgStatus, vidStatus, imageUrl, videoUrl, imgError, vidError } = scene
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex flex-col">
@@ -115,22 +114,22 @@ export default function SceneCard({
           </button>
         )}
 
-        {/* Audio play button overlay (bottom-right) */}
-        {audioUrl && (
+        {/* Download icon overlay */}
+        {imgStatus === 'done' && imageUrl && (
           <button
             onClick={(e) => {
               e.stopPropagation()
-              const audio = new Audio(audioUrl)
-              audio.play()
+              downloadFile(videoUrl || imageUrl, videoUrl ? `scene-${index + 1}-video.mp4` : `scene-${index + 1}-image.png`)
             }}
-            className="absolute bottom-1 right-1 z-10 w-6 h-6 bg-black/70 rounded-full flex items-center justify-center hover:bg-black/90 transition-colors"
-            title="Play voiceover"
+            className="absolute top-1 right-1 z-10 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition-colors"
+            title={videoUrl ? 'Download video' : 'Download image'}
           >
-            <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+            <svg className="w-2.5 h-2.5 text-gray-300" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16" />
             </svg>
           </button>
         )}
+
       </div>
 
       {/* Info area */}
@@ -139,13 +138,10 @@ export default function SceneCard({
         <div className="flex gap-2 mt-1 text-[10px]">
           <span title={imgStatus === 'error' ? (imgError || 'Generation failed') : undefined}>IMG {statusIcon[imgStatus]}</span>
           <span title={vidStatus === 'error' ? (vidError || 'Generation failed') : undefined}>VID {statusIcon[vidStatus]}</span>
-          {(audioStatus && audioStatus !== 'pending') && (
-            <span>AUD {statusIcon[audioStatus]}</span>
-          )}
         </div>
 
         {/* Per-scene action buttons */}
-        {(showImageActions || showVideoActions || showAudioActions) && (
+        {(showImageActions || showVideoActions) && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {showImageActions && (
               <ActionButton
@@ -164,15 +160,6 @@ export default function SceneCard({
                 onCancel={onCancelVideo}
                 disabled={isRunning}
                 requiresImage={imgStatus !== 'done'}
-              />
-            )}
-            {showAudioActions && (
-              <ActionButton
-                status={audioStatus || 'pending'}
-                type="aud"
-                onGenerate={onGenerateAudio}
-                onCancel={onCancelAudio}
-                disabled={isRunning}
               />
             )}
           </div>

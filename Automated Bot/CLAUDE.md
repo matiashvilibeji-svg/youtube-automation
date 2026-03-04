@@ -16,6 +16,30 @@ npm run serve    # Express production server at http://localhost:3000
 
 No test runner or linter is configured.
 
+## Starting the Dev Server (Claude Code procedure)
+
+**When the user asks to "run the website" or "start the server", follow these steps exactly:**
+
+```bash
+# Step 1: Kill any zombie vite/esbuild processes
+pkill -9 -f "node.*vite" 2>/dev/null; pkill -9 -f esbuild 2>/dev/null
+
+# Step 2: Verify both local vite binary AND rollup native binary exist
+ls node_modules/.bin/vite node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node 2>/dev/null
+# If EITHER is missing → rm -rf node_modules package-lock.json && npm install
+
+# Step 3: Start the server (run in background with run_in_background=true, timeout=600000)
+cd "/Users/bezhomatiashvili/Desktop/Automated Bot" && node node_modules/.bin/vite --host 127.0.0.1
+```
+
+**Key details:**
+- Always use `node node_modules/.bin/vite --host 127.0.0.1` — NOT `npx vite` (npx can download a different vite version and corrupt its cache) and NOT `npm run dev` (doesn't pass --host flag)
+- Run with `run_in_background=true` and `timeout=600000` so the process stays alive
+- Server URL: **http://127.0.0.1:5173/**
+- If rollup native binary or local vite binary is missing, a full `rm -rf node_modules package-lock.json && npm install` is required — this is a known npm bug with optional platform-specific dependencies
+- **NEVER run multiple `npm install` commands concurrently** — they corrupt each other's node_modules
+- If npx cache is corrupted, also clear it: `rm -rf ~/.npm/_npx/`
+
 ## Environment Setup
 
 Copy `.env.example` to `.env.local`. All keys use `VITE_` prefix (exposed via `import.meta.env`):
@@ -23,6 +47,7 @@ Copy `.env.example` to `.env.local`. All keys use `VITE_` prefix (exposed via `i
 - `VITE_NANOBANANA_API_KEY` — nanobnana.com
 - `VITE_KLING_ACCESS_KEY` / `VITE_KLING_SECRET_KEY` — klingai.com
 - `VITE_GEMINI_API_KEY` — aistudio.google.com
+- `VITE_ELEVENLABS_API_KEY` — elevenlabs.io
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — Supabase project
 
 Keys can also be entered at runtime via the Settings modal (stored in localStorage under `vp-api-keys`).
@@ -45,7 +70,8 @@ Two-panel SPA: `ChatPanel` (left) + `PipelinePanel` (right). `App.jsx` is the or
 All external API calls go through Vite dev proxy (or Express in production) to avoid CORS:
 - `/api/claude` → `api.anthropic.com/v1/messages`
 - `/api/nanobanana/*` → `nanobnana.com/api/v2/*`
-- `/api/kling/*` → `api.kie.ai/api/v1/*`
+- `/api/kling/*` → `api.klingai.com/v1/*`
+- `/api/elevenlabs/*` → `api.elevenlabs.io/v1/*`
 
 Proxy config: `vite.config.js` (dev), `server/proxy.js` (prod).
 
@@ -65,7 +91,7 @@ Proxy config: `vite.config.js` (dev), `server/proxy.js` (prod).
 
 ### Scene State Shape
 ```js
-{ sentence, imagePrompt, klingPrompt, imgStatus, vidStatus, imageUrl, videoUrl }
+{ sentence, imagePrompt, klingPrompt, imgStatus, vidStatus, audioStatus, imageUrl, videoUrl }
 ```
 Status values: `"pending"` | `"loading"` | `"done"` | `"error"`
 
@@ -100,7 +126,7 @@ If that fails, do a full `rm -rf node_modules package-lock.json && npm install &
 
 ## Claude AI Configuration
 
-Model: `claude-sonnet-4-20250514` with `generate_pipeline` tool. System prompt and tool schema are in `src/lib/constants.js`. The skeleton character description is injected into every image prompt by Claude (per system prompt rules).
+Model: `claude-sonnet-4-6` with 5 tools: `generate_pipeline`, `generate_script_only`, `generate_images`, `generate_videos`, `update_scenes`. System prompt and tool schemas are in `src/lib/constants.js`. The project's character description is injected into every image prompt by Claude (per system prompt rules).
 
 ## Git & Deployment
 

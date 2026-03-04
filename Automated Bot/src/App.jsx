@@ -6,6 +6,7 @@ import useActivityLog from './hooks/useActivityLog'
 import useProject from './hooks/useProject'
 import ChatPanel from './components/ChatPanel'
 import PipelinePanel from './components/PipelinePanel'
+import YouTubeDownloader from './components/YouTubeDownloader'
 import SettingsModal from './components/SettingsModal'
 import MediaDetailModal from './components/MediaDetailModal'
 
@@ -13,6 +14,7 @@ export default function App() {
   const { apiKeys } = useApiKeys()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mediaModal, setMediaModal] = useState(null) // { sceneIndex, mode } | null
+  const [activeTab, setActiveTab] = useState('pipeline') // 'pipeline' | 'tools'
   const { entries: activityEntries, addEntry, clearEntries } = useActivityLog()
   const prevIsLoadingRef = useRef(false)
 
@@ -44,7 +46,7 @@ export default function App() {
     refreshProjects()
   }, [refreshProjects])
 
-  const { scenes, stage, isRunning, startPipeline, cancelPipeline, resetPipeline, updateScene, generateSingleImage, generateSingleVideo, generateSingleAudio, cancelSceneGeneration, initScenesOnly, generateImagesForScenes, generateVideosForScenes, generateAudioForScenes, updateScenePrompts } = usePipeline({
+  const { scenes, stage, isRunning, transcriptAudio, startPipeline, cancelPipeline, resetPipeline, updateScene, generateSingleImage, generateSingleVideo, generateTranscriptAudio, cancelTranscriptAudio, cancelSceneGeneration, initScenesOnly, generateImagesForScenes, generateVideosForScenes, updateScenePrompts } = usePipeline({
     apiKeys,
     onMissingKeys: handleMissingKeys,
     onActivity: addEntry,
@@ -98,7 +100,7 @@ export default function App() {
     }
   }, [scenes, addEntry, handleAutoTitle, initScenesOnly, generateImagesForScenes, generateVideosForScenes, updateScenePrompts])
 
-  const { messages, isLoading, send } = useChat({
+  const { messages, isLoading, send, clearMessages } = useChat({
     apiKeys,
     onPipelineData: handlePipelineData,
     onToolUse: handleToolUse,
@@ -130,6 +132,12 @@ export default function App() {
     resetPipeline()
     clearEntries()
   }, [resetPipeline, clearEntries])
+
+  const handleClearResults = useCallback(() => {
+    resetPipeline()
+    clearMessages()
+    clearEntries()
+  }, [resetPipeline, clearMessages, clearEntries])
 
   const handleOpenMedia = useCallback((sceneIndex, mode) => {
     setMediaModal({ sceneIndex, mode })
@@ -165,6 +173,7 @@ export default function App() {
         onSend={handleSendWithProject}
         isLoading={isLoading}
         onOpenSettings={() => setSettingsOpen(true)}
+        onClearResults={handleClearResults}
         projects={projects}
         currentProjectId={currentProjectId}
         onSelectProject={selectProject}
@@ -172,22 +181,54 @@ export default function App() {
         onDeleteProject={deleteProject}
       />
 
-      <PipelinePanel
-        stage={stage}
-        scenes={scenes}
-        onOpenMedia={handleOpenMedia}
-        isRunning={isRunning}
-        onCancel={cancelPipeline}
-        onReset={handleReset}
-        activityEntries={activityEntries}
-        onUpdateScene={updateScene}
-        onGenerateImage={generateSingleImage}
-        onGenerateVideo={generateSingleVideo}
-        onGenerateAudio={generateSingleAudio}
-        onCancelImage={cancelSceneGeneration}
-        onCancelVideo={cancelSceneGeneration}
-        onCancelAudio={cancelSceneGeneration}
-      />
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Tab bar */}
+        <div className="flex border-b border-gray-800 bg-gray-900 shrink-0">
+          <button
+            onClick={() => setActiveTab('pipeline')}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === 'pipeline'
+                ? 'text-yellow-400 border-b-2 border-yellow-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Pipeline
+          </button>
+          <button
+            onClick={() => setActiveTab('tools')}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === 'tools'
+                ? 'text-yellow-400 border-b-2 border-yellow-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Tools
+          </button>
+        </div>
+
+        {/* Tab content */}
+        {activeTab === 'pipeline' ? (
+          <PipelinePanel
+            stage={stage}
+            scenes={scenes}
+            onOpenMedia={handleOpenMedia}
+            isRunning={isRunning}
+            onCancel={cancelPipeline}
+            onReset={handleReset}
+            activityEntries={activityEntries}
+            onUpdateScene={updateScene}
+            onGenerateImage={generateSingleImage}
+            onGenerateVideo={generateSingleVideo}
+            onCancelImage={cancelSceneGeneration}
+            onCancelVideo={cancelSceneGeneration}
+            transcriptAudio={transcriptAudio}
+            onGenerateTranscriptAudio={generateTranscriptAudio}
+            onCancelTranscriptAudio={cancelTranscriptAudio}
+          />
+        ) : (
+          <YouTubeDownloader />
+        )}
+      </div>
 
       <SettingsModal
         isOpen={settingsOpen}
@@ -208,10 +249,8 @@ export default function App() {
           onUpdateScene={updateScene}
           onGenerateImage={generateSingleImage}
           onGenerateVideo={generateSingleVideo}
-          onGenerateAudio={generateSingleAudio}
           onCancelImage={cancelSceneGeneration}
           onCancelVideo={cancelSceneGeneration}
-          onCancelAudio={cancelSceneGeneration}
           totalScenes={scenes.length}
           onNavigate={handleNavigateMedia}
         />

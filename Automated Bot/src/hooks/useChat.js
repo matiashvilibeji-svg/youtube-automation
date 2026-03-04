@@ -65,6 +65,31 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
     }
   }, [projectId])
 
+  // Detect @N scene references and append scene context to the message
+  const enrichWithSceneRefs = useCallback((text) => {
+    const matches = text.match(/@(\d+)/g)
+    if (!matches || !scenesRef.current?.length) return text
+
+    const seen = new Set()
+    const sceneDetails = []
+    for (const match of matches) {
+      const num = parseInt(match.slice(1), 10)
+      if (seen.has(num)) continue
+      seen.add(num)
+      const scene = scenesRef.current[num - 1]
+      if (!scene) continue
+      sceneDetails.push(
+        `\n[Scene ${num} current data]\n` +
+        `Sentence: ${scene.sentence || '(none)'}\n` +
+        `Image prompt: ${scene.imagePrompt || '(none)'}\n` +
+        `Kling prompt: ${scene.klingPrompt || '(none)'}`
+      )
+    }
+
+    if (sceneDetails.length === 0) return text
+    return text + '\n\n---' + sceneDetails.join('\n')
+  }, [])
+
   const send = useCallback(async (text) => {
     if (!apiKeys.claude) {
       onMissingKeys()
@@ -75,13 +100,17 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
     setMessages((prev) => [...prev, userMsg])
     setIsLoading(true)
 
-    // Persist user message
+    // Enrich message with scene data if @N references are present
+    const enrichedText = enrichWithSceneRefs(text)
+
+    // Persist user message (original text, not enriched)
     saveMessage('user', text)
 
     abortRef.current = new AbortController()
 
     try {
-      const conversationHistory = [...messagesRef.current, userMsg].filter(
+      const enrichedUserMsg = { role: 'user', content: enrichedText }
+      const conversationHistory = [...messagesRef.current, enrichedUserMsg].filter(
         (m) => !(m.role === 'assistant' && typeof m.content === 'string' && m.content.startsWith('Error:'))
           && !m.isPipeline
       )
@@ -119,7 +148,13 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
               onToolUse?.({ name: toolUse.name, data: validated })
               handled = true
             }
-          } else if (['generate_images', 'generate_videos', 'update_scenes'].includes(toolUse.name)) {
+          } else if (toolUse.name === 'update_scenes') {
+            const displayText = response.text || 'Scenes updated — check the right panel'
+            setMessages((prev) => [...prev, { role: 'assistant', content: displayText, isSceneUpdate: true }])
+            saveMessage('assistant', displayText, false)
+            onToolUse?.({ name: toolUse.name, data: toolUse.input })
+            handled = true
+          } else if (['generate_images', 'generate_videos'].includes(toolUse.name)) {
             const displayText = response.text || `Tool called: ${toolUse.name}`
             setMessages((prev) => [...prev, { role: 'assistant', content: displayText, isPipeline: true }])
             saveMessage('assistant', displayText, true)
@@ -159,11 +194,25 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
       setIsLoading(false)
       abortRef.current = null
     }
-  }, [apiKeys.claude, onPipelineData, onToolUse, onMissingKeys, saveMessage])
+  }, [apiKeys.claude, onPipelineData, onToolUse, onMissingKeys, saveMessage, enrichWithSceneRefs])
+
+  const clearMessages = useCallback(async () => {
+    setMessages([])
+    if (!supabase || !projectId) return
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('project_id', projectId)
+      if (error) console.error('Failed to delete messages:', error)
+    } catch (err) {
+      console.error('Message delete network error:', err)
+    }
+  }, [projectId])
 
   const cancel = useCallback(() => {
     abortRef.current?.abort()
   }, [])
 
-  return { messages, isLoading, send, cancel }
+  return { messages, isLoading, send, cancel, clearMessages }
 }

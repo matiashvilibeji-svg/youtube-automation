@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { STAGES } from '../lib/constants'
+import { downloadAllAsZip } from '../lib/download'
 import StageBar from './StageBar'
 import StatsRow from './StatsRow'
 import SceneCard from './SceneCard'
 import ScriptStrip from './ScriptStrip'
 import ActivityFeed from './ActivityFeed'
 import SceneEditor from './SceneEditor'
+import TranscriptPanel from './TranscriptPanel'
 
 export default function PipelinePanel({
   stage,
@@ -18,15 +20,16 @@ export default function PipelinePanel({
   onUpdateScene,
   onGenerateImage,
   onGenerateVideo,
-  onGenerateAudio,
   onCancelImage,
   onCancelVideo,
-  onCancelAudio,
+  transcriptAudio,
+  onGenerateTranscriptAudio,
+  onCancelTranscriptAudio,
 }) {
   const totalScenes = scenes.length
   const imagesDone = scenes.filter((s) => s.imgStatus === 'done').length
   const videosDone = scenes.filter((s) => s.vidStatus === 'done').length
-  const audioDone = scenes.filter((s) => s.audioStatus === 'done').length
+  const audioStatus = transcriptAudio?.status || 'pending'
   const [logExpanded, setLogExpanded] = useState(true)
 
   // viewingStep tracks which step the user is looking at (view-only, doesn't affect pipeline)
@@ -52,8 +55,6 @@ export default function PipelinePanel({
   // Determine what actions to show based on viewing step
   const showImageActions = viewingStep === 'images' || viewingStep === 'done'
   const showVideoActions = viewingStep === 'videos' || viewingStep === 'done'
-  const showAudioActions = viewingStep === 'videos' || viewingStep === 'done'
-
   // Batch generate all pending for a type
   const handleBatchGenerateImages = () => {
     scenes.forEach((scene, i) => {
@@ -71,17 +72,26 @@ export default function PipelinePanel({
     })
   }
 
-  const handleBatchGenerateAudio = () => {
-    scenes.forEach((scene, i) => {
-      if (scene.audioStatus === 'pending' || scene.audioStatus === 'error') {
-        onGenerateAudio?.(i)
-      }
-    })
-  }
-
   const pendingImages = scenes.filter((s) => s.imgStatus === 'pending' || s.imgStatus === 'error').length
   const pendingVideos = scenes.filter((s) => (s.vidStatus === 'pending' || s.vidStatus === 'error') && s.imgStatus === 'done').length
-  const pendingAudio = scenes.filter((s) => !s.audioStatus || s.audioStatus === 'pending' || s.audioStatus === 'error').length
+
+  // ZIP download state
+  const [zipProgress, setZipProgress] = useState(null) // null | { current, total }
+
+  const handleDownloadAll = async () => {
+    setZipProgress({ current: 0, total: 0 })
+    try {
+      await downloadAllAsZip({
+        scenes,
+        transcriptAudioUrl: transcriptAudio?.url,
+        onProgress: (current, total) => setZipProgress({ current, total }),
+      })
+    } catch (e) {
+      console.error('ZIP download failed:', e)
+    } finally {
+      setZipProgress(null)
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -99,12 +109,23 @@ export default function PipelinePanel({
               </button>
             )}
             {!isRunning && stage === 'done' && (
-              <button
-                onClick={onReset}
-                className="text-xs px-3 py-1.5 bg-gray-800 text-gray-400 rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Reset
-              </button>
+              <>
+                <button
+                  onClick={handleDownloadAll}
+                  disabled={zipProgress !== null}
+                  className="text-xs px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {zipProgress
+                    ? `Downloading... ${zipProgress.current}/${zipProgress.total}`
+                    : '⬇ Download All (.zip)'}
+                </button>
+                <button
+                  onClick={onReset}
+                  className="text-xs px-3 py-1.5 bg-gray-800 text-gray-400 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Reset
+                </button>
+              </>
             )}
           </div>
         )}
@@ -119,7 +140,7 @@ export default function PipelinePanel({
         <>
           {/* Stats */}
           <div className="px-6 pb-2">
-            <StatsRow total={totalScenes} imagesDone={imagesDone} videosDone={videosDone} audioDone={audioDone} />
+            <StatsRow total={totalScenes} imagesDone={imagesDone} videosDone={videosDone} audioStatus={audioStatus} />
           </div>
 
           {/* Activity log strip (collapsible) */}
@@ -160,10 +181,20 @@ export default function PipelinePanel({
             />
           )}
 
+          {viewingStep === 'audio' && (
+            <TranscriptPanel
+              scenes={scenes}
+              transcriptAudio={transcriptAudio}
+              onGenerate={onGenerateTranscriptAudio}
+              onCancel={onCancelTranscriptAudio}
+              isRunning={isRunning}
+            />
+          )}
+
           {(viewingStep === 'images' || viewingStep === 'videos' || viewingStep === 'done') && (
             <>
               {/* Batch action bar */}
-              {!isRunning && (viewingStep === 'images' || viewingStep === 'videos' || viewingStep === 'done') && (
+              {!isRunning && (
                 <div className="px-6 pb-2 flex flex-wrap gap-2">
                   {viewingStep === 'images' && pendingImages > 0 && (
                     <button
@@ -181,14 +212,6 @@ export default function PipelinePanel({
                       Generate All Pending Videos ({pendingVideos})
                     </button>
                   )}
-                  {(viewingStep === 'videos' || viewingStep === 'done') && pendingAudio > 0 && onGenerateAudio && (
-                    <button
-                      onClick={handleBatchGenerateAudio}
-                      className="text-xs px-3 py-1.5 bg-purple-500/20 text-purple-400 rounded-lg hover:bg-purple-500/30 transition-colors"
-                    >
-                      Generate All Pending Audio ({pendingAudio})
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -204,13 +227,10 @@ export default function PipelinePanel({
                       onOpenVideo={() => onOpenMedia(i, 'video')}
                       onGenerateImage={() => onGenerateImage?.(i)}
                       onGenerateVideo={() => onGenerateVideo?.(i)}
-                      onGenerateAudio={() => onGenerateAudio?.(i)}
                       onCancelImage={() => onCancelImage?.('img', i)}
                       onCancelVideo={() => onCancelVideo?.('vid', i)}
-                      onCancelAudio={() => onCancelAudio?.('aud', i)}
                       showImageActions={showImageActions}
                       showVideoActions={showVideoActions}
-                      showAudioActions={showAudioActions}
                       isRunning={isRunning}
                     />
                   ))}

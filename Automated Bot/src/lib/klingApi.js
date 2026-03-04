@@ -2,16 +2,25 @@ import { VIDEO_POLL_INTERVAL, VIDEO_POLL_MAX_ATTEMPTS } from './constants'
 import { generateKlingJwt } from './klingJwt'
 
 async function imageUrlToBase64(url, signal) {
+  // Data URLs: extract base64 directly — no fetch, no blob, no btoa
+  if (url.startsWith('data:')) {
+    const commaIndex = url.indexOf(',')
+    if (commaIndex === -1) throw new Error('Malformed data URL: no comma found')
+    return url.substring(commaIndex + 1)
+  }
+
+  // HTTP URLs: fetch and convert with chunked string building (avoids O(n²) concatenation)
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`Failed to fetch image for base64 conversion (${res.status})`)
-  const blob = await res.blob()
-  const buffer = await blob.arrayBuffer()
+  const buffer = await res.arrayBuffer()
   const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
+  const CHUNK_SIZE = 8192
+  const chunks = []
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length))
+    chunks.push(String.fromCharCode(...slice))
   }
-  return btoa(binary)
+  return btoa(chunks.join(''))
 }
 
 export async function createVideoTask(token, imageUrl, prompt, signal) {
@@ -27,7 +36,7 @@ export async function createVideoTask(token, imageUrl, prompt, signal) {
       model_name: 'kling-v3',
       image: imageBase64,
       prompt,
-      mode: 'std',
+      mode: 'pro',
       duration: '5',
       aspect_ratio: '9:16',
       cfg_scale: 0.5,

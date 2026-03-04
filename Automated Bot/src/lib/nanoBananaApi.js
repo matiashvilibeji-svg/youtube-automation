@@ -56,7 +56,7 @@ export async function pollImageStatus(apiKey, taskId, signal) {
   for (let attempt = 0; attempt < IMAGE_POLL_MAX_ATTEMPTS; attempt++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-    const res = await fetch(`/api/nanobanana/status/${taskId}`, {
+    const res = await fetch(`/api/nanobanana/status?task_id=${taskId}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
@@ -69,16 +69,18 @@ export async function pollImageStatus(apiKey, taskId, signal) {
     }
 
     const data = await res.json()
+    console.log(`[NanoBanana] Poll #${attempt + 1} response:`, JSON.stringify(data).substring(0, 200))
     const status = data?.data?.status
 
-    if (status === 'completed') {
-      const url = data.data.output_url
-      if (!url) throw new Error('Completed but no output_url')
+    if (status === 1) {
+      const urls = JSON.parse(data.data.response)
+      const url = urls[0]
+      if (!url) throw new Error('Completed but no image URL in response')
       return url
     }
 
-    if (status === 'failed' || status === 'error') {
-      throw new Error(`Image generation failed: ${data.data?.error || 'unknown'}`)
+    if (status === -1) {
+      throw new Error(`Image generation failed: ${data.data?.error_message || 'unknown'}`)
     }
 
     // Wait before next poll
@@ -95,7 +97,10 @@ export async function pollImageStatus(apiKey, taskId, signal) {
 }
 
 export async function generateAndPollImage(apiKey, prompt, signal) {
+  console.log('[NanoBanana] Starting generate...')
   const taskId = await generateImage(apiKey, prompt, signal)
+  console.log('[NanoBanana] Got task_id:', taskId, '— starting poll...')
   const imageUrl = await pollImageStatus(apiKey, taskId, signal)
+  console.log('[NanoBanana] Poll complete, imageUrl:', imageUrl)
   return { taskId, imageUrl }
 }

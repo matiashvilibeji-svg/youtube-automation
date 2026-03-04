@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { downloadFile } from '../lib/download'
 
 export default function MediaDetailModal({
   scene,
@@ -8,10 +9,8 @@ export default function MediaDetailModal({
   onUpdateScene,
   onGenerateImage,
   onGenerateVideo,
-  onGenerateAudio,
   onCancelImage,
   onCancelVideo,
-  onCancelAudio,
   totalScenes,
   onNavigate,
 }) {
@@ -174,6 +173,24 @@ export default function MediaDetailModal({
                 </button>
               </div>
             )}
+
+            {/* Download button */}
+            {((viewMode === 'image' && scene.imgStatus === 'done' && scene.imageUrl) ||
+              (viewMode === 'video' && scene.vidStatus === 'done' && scene.videoUrl)) && (
+              <button
+                onClick={() =>
+                  viewMode === 'video'
+                    ? downloadFile(scene.videoUrl, `scene-${sceneIndex + 1}-video.mp4`)
+                    : downloadFile(scene.imageUrl, `scene-${sceneIndex + 1}-image.png`)
+                }
+                className="mt-2 text-xs px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16" />
+                </svg>
+                Download {viewMode === 'video' ? 'Video' : 'Image'}
+              </button>
+            )}
           </div>
 
           {/* Right: Prompts & Actions */}
@@ -272,56 +289,11 @@ export default function MediaDetailModal({
               )}
             </div>
 
-            {/* Voiceover */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Voiceover
-              </label>
-              {scene.audioStatus === 'done' && scene.audioUrl ? (
-                <div className="mt-1">
-                  <audio controls src={scene.audioUrl} className="w-full h-8" />
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => onGenerateAudio?.(sceneIndex)}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-gray-700/50 text-gray-300 hover:bg-gray-700 transition-colors"
-                    >
-                      Regenerate Audio
-                    </button>
-                  </div>
-                </div>
-              ) : scene.audioStatus === 'loading' ? (
-                <div className="mt-1 flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs text-purple-400">Generating voiceover...</span>
-                  <button
-                    onClick={() => onCancelAudio?.('aud', sceneIndex)}
-                    className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors ml-auto"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-1">
-                  <button
-                    onClick={() => onGenerateAudio?.(sceneIndex)}
-                    className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                      scene.audioStatus === 'error'
-                        ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
-                        : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                    }`}
-                  >
-                    {scene.audioStatus === 'error' ? 'Retry Audio' : 'Generate Audio'}
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Status */}
             <div className="mt-auto pt-2 border-t border-gray-800">
               <div className="flex gap-4 text-xs text-gray-500">
                 <span>Image: <StatusBadge status={scene.imgStatus} /></span>
                 <span>Video: <StatusBadge status={scene.vidStatus} /></span>
-                <span>Audio: <StatusBadge status={scene.audioStatus || 'pending'} /></span>
               </div>
             </div>
           </div>

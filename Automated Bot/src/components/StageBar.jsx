@@ -8,7 +8,7 @@ export default function StageBar({ currentStage, viewingStep, onStepClick }) {
       {STAGES.map((stage, i) => {
         const isCompleted = i < currentIndex
         const isActive = i === currentIndex
-        const isClickable = i <= currentIndex || (currentIndex >= 1 && i <= 4)
+        const isClickable = i <= currentIndex || (currentIndex >= 1 && i <= STAGES.length - 1)
         const isViewing = viewingStep === stage.id
 
         return (

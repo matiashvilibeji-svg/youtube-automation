@@ -211,6 +211,15 @@ export default defineConfig({
           })
         },
       },
+      '/api/nanobanana-common': {
+        target: 'https://api.nanobananaapi.ai',
+        changeOrigin: true,
+        timeout: 30000,
+        rewrite: (path) => path.replace(/^\/api\/nanobanana-common/, '/api/v1/common'),
+        configure: (proxy) => {
+          proxy.on('error', proxyErrorHandler)
+        },
+      },
       '/api/nanobanana': {
         target: 'https://api.nanobananaapi.ai',
         changeOrigin: true,

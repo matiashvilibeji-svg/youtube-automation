@@ -48,7 +48,7 @@ export default function TranscriptPanel({
     <div className="flex-1 flex flex-col overflow-hidden px-6 pb-2">
       {/* Voice Settings toggle */}
       <button
-        onClick={handleToggleSettings}
+        onClick={() => setSettingsExpanded((v) => !v)}
         className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-gray-400 transition-colors mb-2 self-start"
       >
         <span className={`transition-transform ${settingsExpanded ? 'rotate-90' : ''}`}>▶</span>

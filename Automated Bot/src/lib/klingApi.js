@@ -38,10 +38,10 @@ export async function createVideoTask(token, imageUrl, prompt, signal) {
       image: imageBase64,
       prompt,
       mode: 'pro',
-      duration: '5',
+      duration: 5,
       aspect_ratio: '9:16',
       cfg_scale: 0.5,
-      enable_audio: true,
+      sound: 'on',
     }),
     signal,
   })

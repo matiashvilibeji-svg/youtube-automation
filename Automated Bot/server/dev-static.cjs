@@ -12,6 +12,14 @@ const { URL } = require('url')
 
 try { require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.local') }) } catch {}
 
+// Prevent stray errors from crashing the dev-static server
+process.on('uncaughtException', (err) => {
+  console.error('[dev-static] Uncaught exception (server kept alive):', err.message)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[dev-static] Unhandled rejection (server kept alive):', reason)
+})
+
 const PORT = process.env.PORT || 3000
 const DIST = path.join(__dirname, '..', 'dist')
 
@@ -68,15 +76,27 @@ function proxyRequest(req, res, { target, rewrite, prefix, timeout }) {
 
   const https = require('https')
   const proxyReq = https.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers)
+    proxyRes.on('error', (err) => {
+      console.error(`Upstream response error ${prefix}:`, err.message)
+    })
+    try {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers)
+    } catch (err) {
+      console.error(`Failed to write proxy response headers ${prefix}:`, err.message)
+      return
+    }
     proxyRes.pipe(res)
   })
 
   proxyReq.on('error', (err) => {
     console.error(`Proxy error ${prefix}:`, err.message)
-    if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: `Proxy error: ${err.message}` }))
+    try {
+      if (!res.headersSent && res.socket && !res.socket.destroyed) {
+        res.writeHead(502, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: `Proxy error: ${err.message}` }))
+      }
+    } catch (writeErr) {
+      console.error('Failed to send proxy error response:', writeErr.message)
     }
   })
 
@@ -110,9 +130,13 @@ function handleImageProxy(req, res) {
     upstream.pipe(res)
   }).on('error', (err) => {
     console.error('Image proxy error:', err.message)
-    if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: `Image proxy error: ${err.message}` }))
+    try {
+      if (!res.headersSent && res.socket && !res.socket.destroyed) {
+        res.writeHead(502, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: `Image proxy error: ${err.message}` }))
+      }
+    } catch (writeErr) {
+      console.error('Failed to send image proxy error response:', writeErr.message)
     }
   })
 }

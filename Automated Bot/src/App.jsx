@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import useApiKeys from './hooks/useApiKeys'
+import useApiCredits from './hooks/useApiCredits'
 import useChat from './hooks/useChat'
 import usePipeline from './hooks/usePipeline'
 import useActivityLog from './hooks/useActivityLog'
@@ -13,6 +14,7 @@ import MediaDetailModal from './components/MediaDetailModal'
 
 export default function App() {
   const { apiKeys } = useApiKeys()
+  const { credits, refreshCredits } = useApiCredits(apiKeys)
   const { voiceSettings, saveSettings: saveVoiceSettings, voices } = useVoiceSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mediaModal, setMediaModal] = useState(null) // { sceneIndex, mode } | null
@@ -228,6 +230,8 @@ export default function App() {
             voiceSettings={voiceSettings}
             onSaveVoiceSettings={saveVoiceSettings}
             voices={voices}
+            credits={credits}
+            onRefreshCredits={refreshCredits}
           />
         ) : (
           <YouTubeDownloader />

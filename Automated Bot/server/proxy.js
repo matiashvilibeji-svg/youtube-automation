@@ -7,6 +7,15 @@ import { registerRoutes } from './youtubeDownload.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: resolve(__dirname, '..', '.env.local') })
+
+// Prevent stray errors from crashing the production server
+process.on('uncaughtException', (err) => {
+  console.error('[server] Uncaught exception (server kept alive):', err.message)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled rejection (server kept alive):', reason)
+})
+
 const app = express()
 const PORT = process.env.PORT || 3000
 
@@ -21,8 +30,12 @@ registerRoutes(app)
 
 function onProxyError(err, req, res) {
   console.error(`Proxy error for ${req.url}:`, err.message)
-  if (!res.headersSent) {
-    res.status(502).json({ error: `Proxy error: ${err.message}` })
+  try {
+    if (!res.headersSent && res.socket && !res.socket.destroyed) {
+      res.status(502).json({ error: `Proxy error: ${err.message}` })
+    }
+  } catch (writeErr) {
+    console.error('Failed to send proxy error response:', writeErr.message)
   }
 }
 
@@ -55,11 +68,26 @@ app.use('/api/claude', createProxyMiddleware({
   timeout: 180000,
   proxyTimeout: 180000,
   onError: onProxyError,
+  onProxyRes: (proxyRes, req) => {
+    proxyRes.on('error', (err) => {
+      console.error(`Upstream response error for ${req.url}:`, err.message)
+    })
+  },
   onProxyReq: (proxyReq) => {
     const claudeKey = process.env.VITE_CLAUDE_API_KEY
     if (claudeKey) proxyReq.setHeader('x-api-key', claudeKey.trim())
     proxyReq.removeHeader('anthropic-dangerous-direct-browser-access')
   },
+}))
+
+// Nano Banana credits API proxy (different base path than generation endpoint)
+app.use('/api/nanobanana-common', createProxyMiddleware({
+  target: 'https://api.nanobananaapi.ai',
+  changeOrigin: true,
+  pathRewrite: { '^/api/nanobanana-common': '/api/v1/common' },
+  timeout: 30000,
+  proxyTimeout: 30000,
+  onError: onProxyError,
 }))
 
 // Nano Banana 2 API proxy
@@ -70,6 +98,11 @@ app.use('/api/nanobanana', createProxyMiddleware({
   timeout: 120000,
   proxyTimeout: 120000,
   onError: onProxyError,
+  onProxyRes: (proxyRes, req) => {
+    proxyRes.on('error', (err) => {
+      console.error(`Upstream response error for ${req.url}:`, err.message)
+    })
+  },
 }))
 
 // Kling API proxy
@@ -80,6 +113,11 @@ app.use('/api/kling', createProxyMiddleware({
   timeout: 120000,
   proxyTimeout: 120000,
   onError: onProxyError,
+  onProxyRes: (proxyRes, req) => {
+    proxyRes.on('error', (err) => {
+      console.error(`Upstream response error for ${req.url}:`, err.message)
+    })
+  },
 }))
 
 // ElevenLabs TTS API proxy
@@ -90,6 +128,11 @@ app.use('/api/elevenlabs', createProxyMiddleware({
   timeout: 60000,
   proxyTimeout: 60000,
   onError: onProxyError,
+  onProxyRes: (proxyRes, req) => {
+    proxyRes.on('error', (err) => {
+      console.error(`Upstream response error for ${req.url}:`, err.message)
+    })
+  },
 }))
 
 // SPA fallback

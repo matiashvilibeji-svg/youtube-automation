@@ -6,6 +6,7 @@ import StatsRow from './StatsRow'
 import SceneCard from './SceneCard'
 import ScriptStrip from './ScriptStrip'
 import ActivityFeed from './ActivityFeed'
+import CreditsBar from './CreditsBar'
 import SceneEditor from './SceneEditor'
 import TranscriptPanel from './TranscriptPanel'
 
@@ -28,6 +29,8 @@ export default function PipelinePanel({
   voiceSettings,
   onSaveVoiceSettings,
   voices,
+  credits,
+  onRefreshCredits,
 }) {
   const totalScenes = scenes.length
   const imagesDone = scenes.filter((s) => s.imgStatus === 'done').length
@@ -67,12 +70,33 @@ export default function PipelinePanel({
     })
   }
 
-  const handleBatchGenerateVideos = () => {
-    scenes.forEach((scene, i) => {
-      if ((scene.vidStatus === 'pending' || scene.vidStatus === 'error') && scene.imgStatus === 'done') {
-        onGenerateVideo?.(i)
+  const [batchingVideos, setBatchingVideos] = useState(false)
+  const batchingVideosRef = useRef(false)
+
+  const handleBatchGenerateVideos = async () => {
+    const pendingIndices = scenes
+      .map((scene, i) => ({ scene, i }))
+      .filter(({ scene }) => (scene.vidStatus === 'pending' || scene.vidStatus === 'error') && scene.imgStatus === 'done')
+      .map(({ i }) => i)
+
+    if (pendingIndices.length === 0) return
+
+    setBatchingVideos(true)
+    batchingVideosRef.current = true
+    try {
+      for (let b = 0; b < pendingIndices.length; b += 3) {
+        if (!batchingVideosRef.current) break
+        const batch = pendingIndices.slice(b, b + 3)
+        await Promise.all(batch.map((i) => onGenerateVideo?.(i)))
       }
-    })
+    } finally {
+      setBatchingVideos(false)
+      batchingVideosRef.current = false
+    }
+  }
+
+  const cancelBatchVideos = () => {
+    batchingVideosRef.current = false
   }
 
   const pendingImages = scenes.filter((s) => s.imgStatus === 'pending' || s.imgStatus === 'error').length
@@ -133,6 +157,9 @@ export default function PipelinePanel({
           </div>
         )}
       </div>
+
+      {/* API Credits */}
+      <CreditsBar credits={credits} onRefresh={onRefreshCredits} />
 
       {totalScenes === 0 ? (
         /* Ideas phase — full activity feed */
@@ -210,12 +237,20 @@ export default function PipelinePanel({
                       Generate All Pending Images ({pendingImages})
                     </button>
                   )}
-                  {viewingStep === 'videos' && pendingVideos > 0 && (
+                  {viewingStep === 'videos' && pendingVideos > 0 && !batchingVideos && (
                     <button
                       onClick={handleBatchGenerateVideos}
                       className="text-xs px-3 py-1.5 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30 transition-colors"
                     >
                       Generate All Pending Videos ({pendingVideos})
+                    </button>
+                  )}
+                  {batchingVideos && (
+                    <button
+                      onClick={cancelBatchVideos}
+                      className="text-xs px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
+                    >
+                      Stop Batch Generation
                     </button>
                   )}
                 </div>

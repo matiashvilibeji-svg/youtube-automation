@@ -20,7 +20,7 @@ function abortableDelay(ms, signal) {
  * Returns { text: string|null, pipelineData: object|null }
  * Retries up to 3 times on network errors and 5xx responses.
  */
-export async function sendMessage(apiKey, conversationHistory, signal, {
+export async function sendMessage(conversationHistory, signal, {
   projectContext = '',
   ideaInstructions = '', scriptInstructions = '', characterDescription = '',
   imageInstructions = '', videoInstructions = '',
@@ -50,9 +50,7 @@ export async function sendMessage(apiKey, conversationHistory, signal, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body,
         signal,
@@ -73,6 +71,12 @@ export async function sendMessage(apiKey, conversationHistory, signal, {
 
     // Don't retry 4xx — auth/rate-limit errors won't resolve on retry
     if (res.status >= 400 && res.status < 500) {
+      if (res.status === 401) {
+        throw new Error('Claude API authentication failed. Check VITE_CLAUDE_API_KEY in .env.local and restart the dev server.')
+      }
+      if (res.status === 429) {
+        throw new Error('Claude API rate limit exceeded. Please wait a moment and try again.')
+      }
       const err = await res.text().catch(() => 'Unknown error')
       throw new Error(`Claude API error (${res.status}): ${err}`)
     }

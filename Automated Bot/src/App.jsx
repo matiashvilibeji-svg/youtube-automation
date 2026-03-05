@@ -4,6 +4,7 @@ import useChat from './hooks/useChat'
 import usePipeline from './hooks/usePipeline'
 import useActivityLog from './hooks/useActivityLog'
 import useProject from './hooks/useProject'
+import useVoiceSettings from './hooks/useVoiceSettings'
 import ChatPanel from './components/ChatPanel'
 import PipelinePanel from './components/PipelinePanel'
 import YouTubeDownloader from './components/YouTubeDownloader'
@@ -12,6 +13,7 @@ import MediaDetailModal from './components/MediaDetailModal'
 
 export default function App() {
   const { apiKeys } = useApiKeys()
+  const { voiceSettings, saveSettings: saveVoiceSettings, voices } = useVoiceSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mediaModal, setMediaModal] = useState(null) // { sceneIndex, mode } | null
   const [activeTab, setActiveTab] = useState('pipeline') // 'pipeline' | 'tools'
@@ -48,6 +50,7 @@ export default function App() {
 
   const { scenes, stage, isRunning, transcriptAudio, startPipeline, cancelPipeline, resetPipeline, updateScene, generateSingleImage, generateSingleVideo, generateTranscriptAudio, cancelTranscriptAudio, cancelSceneGeneration, initScenesOnly, generateImagesForScenes, generateVideosForScenes, updateScenePrompts } = usePipeline({
     apiKeys,
+    voiceSettings,
     onMissingKeys: handleMissingKeys,
     onActivity: addEntry,
     projectId: currentProjectId,
@@ -101,10 +104,8 @@ export default function App() {
   }, [scenes, addEntry, handleAutoTitle, initScenesOnly, generateImagesForScenes, generateVideosForScenes, updateScenePrompts])
 
   const { messages, isLoading, send, clearMessages } = useChat({
-    apiKeys,
     onPipelineData: handlePipelineData,
     onToolUse: handleToolUse,
-    onMissingKeys: handleMissingKeys,
     projectId: currentProjectId,
     scenes,
     stage,
@@ -224,6 +225,9 @@ export default function App() {
             transcriptAudio={transcriptAudio}
             onGenerateTranscriptAudio={generateTranscriptAudio}
             onCancelTranscriptAudio={cancelTranscriptAudio}
+            voiceSettings={voiceSettings}
+            onSaveVoiceSettings={saveVoiceSettings}
+            voices={voices}
           />
         ) : (
           <YouTubeDownloader />

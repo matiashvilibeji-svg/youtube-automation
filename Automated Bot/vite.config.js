@@ -1,5 +1,30 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+
+// Load .env.local for server-side proxy use (not client-side)
+try {
+  const envPath = resolve(import.meta.dirname, '.env.local')
+  const envContent = readFileSync(envPath, 'utf-8')
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIdx = trimmed.indexOf('=')
+    if (eqIdx < 0) continue
+    const key = trimmed.slice(0, eqIdx).trim()
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+    if (!process.env[key]) process.env[key] = val
+  }
+} catch {}
+
+// Lazy-load youtubeDownload.js once — avoids Vite re-tracking the dynamic import
+// on every request, which was causing full server restarts when the file changed.
+let _ytMod = null
+async function getYtModule() {
+  if (!_ytMod) _ytMod = await import('./server/youtubeDownload.js')
+  return _ytMod
+}
 
 function youtubeApiPlugin() {
   return {
@@ -7,7 +32,13 @@ function youtubeApiPlugin() {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (req.url === '/api/youtube/info' && req.method === 'POST') {
-          const { registerRoutes } = await import('./server/youtubeDownload.js')
+          const timeout = setTimeout(() => {
+            if (!res.headersSent) {
+              res.writeHead(504, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Request timed out' }))
+            }
+          }, 300000) // 5 min
+
           // Collect body
           let body = ''
           req.on('data', (chunk) => { body += chunk })
@@ -18,7 +49,6 @@ function youtubeApiPlugin() {
               req.body = {}
             }
             // Mini express-like response helpers
-            const origJson = res.json
             if (!res.json) {
               res.json = (data) => {
                 res.setHeader('Content-Type', 'application/json')
@@ -27,8 +57,8 @@ function youtubeApiPlugin() {
               res.status = (code) => { res.statusCode = code; return res }
             }
 
-            const { checkDependencies, getVideoInfo } = await import('./server/youtubeDownload.js')
             try {
+              const { checkDependencies, getVideoInfo } = await getYtModule()
               await checkDependencies()
               const { url } = req.body || {}
               if (!url) { res.statusCode = 400; return res.json({ error: 'Missing url parameter' }) }
@@ -36,20 +66,31 @@ function youtubeApiPlugin() {
               res.json(info)
             } catch (err) {
               console.error('YouTube info error:', err.message)
-              res.statusCode = 500
-              res.json({ error: err.message })
+              if (!res.headersSent) {
+                res.statusCode = 500
+                res.json({ error: err.message })
+              }
+            } finally {
+              clearTimeout(timeout)
             }
           })
           return
         }
 
         if (req.url?.startsWith('/api/youtube/download') && req.method === 'GET') {
-          const { checkDependencies, downloadAudio } = await import('./server/youtubeDownload.js')
+          const timeout = setTimeout(() => {
+            if (!res.headersSent) {
+              res.writeHead(504, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Request timed out' }))
+            }
+          }, 300000) // 5 min
+
           const urlObj = new URL(req.url, 'http://localhost')
           const videoUrl = urlObj.searchParams.get('url')
           const title = urlObj.searchParams.get('title')
 
           if (!videoUrl) {
+            clearTimeout(timeout)
             res.statusCode = 400
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({ error: 'Missing url parameter' }))
@@ -57,6 +98,7 @@ function youtubeApiPlugin() {
           }
 
           try {
+            const { checkDependencies, downloadAudio } = await getYtModule()
             await checkDependencies()
             const filename = (title || 'audio').replace(/[^a-zA-Z0-9_\- ]/g, '') + '.mp3'
             res.setHeader('Content-Type', 'audio/mpeg')
@@ -69,6 +111,41 @@ function youtubeApiPlugin() {
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: err.message }))
             }
+          } finally {
+            clearTimeout(timeout)
+          }
+          return
+        }
+
+        // Image proxy to bypass CORS when converting external CDN images to base64
+        if (req.url?.startsWith('/api/fetch-image') && req.method === 'GET') {
+          const urlObj = new URL(req.url, 'http://localhost')
+          const imageUrl = urlObj.searchParams.get('url')
+
+          if (!imageUrl || !/^https?:\/\//.test(imageUrl)) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Missing or invalid url parameter' }))
+            return
+          }
+
+          try {
+            const upstream = await fetch(imageUrl)
+            if (!upstream.ok) {
+              res.statusCode = upstream.status
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: `Upstream returned ${upstream.status}` }))
+              return
+            }
+            const contentType = upstream.headers.get('content-type')
+            if (contentType) res.setHeader('Content-Type', contentType)
+            const buffer = Buffer.from(await upstream.arrayBuffer())
+            res.end(buffer)
+          } catch (err) {
+            console.error('Image proxy error:', err.message)
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: `Image proxy error: ${err.message}` }))
           }
           return
         }
@@ -94,6 +171,8 @@ export default defineConfig({
     watch: {
       ignored: [
         '**/node_modules/**',
+        '**/node_modules_old*/**',
+        '**/server/**',
         '**/.git/**',
         '**/.env*',
         '**/dist/**',
@@ -101,6 +180,7 @@ export default defineConfig({
         '**/.claude/**',
         '**/CLAUDE.md',
         '**/*.jsonl',
+        '**/package-lock.json',
       ],
       awaitWriteFinish: {
         stabilityThreshold: 1000,
@@ -110,7 +190,7 @@ export default defineConfig({
     },
     hmr: {
       protocol: 'ws',
-      host: 'localhost',
+      host: '127.0.0.1',
     },
     proxy: {
       '/api/claude': {
@@ -122,23 +202,20 @@ export default defineConfig({
           proxy.on('error', proxyErrorHandler)
           proxy.on('proxyReq', (proxyReq, req, res) => {
             req.socket.setTimeout(180000)
+            const claudeKey = process.env.VITE_CLAUDE_API_KEY
+            if (claudeKey) proxyReq.setHeader('x-api-key', claudeKey.trim())
+            // Strip browser headers so Anthropic doesn't treat this as a direct browser request
+            proxyReq.removeHeader('anthropic-dangerous-direct-browser-access')
+            proxyReq.removeHeader('origin')
+            proxyReq.removeHeader('referer')
           })
         },
       },
-      '/api/nanobanana/generate': {
-        target: 'https://nanobnana.com',
+      '/api/nanobanana': {
+        target: 'https://api.nanobananaapi.ai',
         changeOrigin: true,
         timeout: 120000,
-        rewrite: (path) => path.replace(/^\/api\/nanobanana\/generate/, '/api/v2/generate'),
-        configure: (proxy) => {
-          proxy.on('error', proxyErrorHandler)
-        },
-      },
-      '/api/nanobanana/status': {
-        target: 'https://nanobnana.com',
-        changeOrigin: true,
-        timeout: 120000,
-        rewrite: (path) => path.replace(/^\/api\/nanobanana\/status/, '/api/v2/status'),
+        rewrite: (path) => path.replace(/^\/api\/nanobanana/, '/api/v1/nanobanana'),
         configure: (proxy) => {
           proxy.on('error', proxyErrorHandler)
         },

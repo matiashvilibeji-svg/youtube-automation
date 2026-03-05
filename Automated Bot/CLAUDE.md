@@ -21,12 +21,18 @@ No test runner or linter is configured.
 **When the user asks to "run the website" or "start the server", follow these steps exactly:**
 
 ```bash
-# Step 1: Kill any zombie vite/esbuild processes
-pkill -9 -f "node.*vite" 2>/dev/null; pkill -9 -f esbuild 2>/dev/null
+# Step 1: Kill any zombie vite/esbuild/npm processes
+pkill -9 -f "node.*vite" 2>/dev/null; pkill -9 -f esbuild 2>/dev/null; pkill -9 -f npm 2>/dev/null; sleep 1
 
-# Step 2: Verify both local vite binary AND rollup native binary exist
-ls node_modules/.bin/vite node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node 2>/dev/null
-# If EITHER is missing → rm -rf node_modules package-lock.json && npm install
+# Step 2: Verify ALL three critical deps exist
+ls node_modules/.bin/vite node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node node_modules/esbuild/lib/main.js 2>/dev/null
+# If ANY is missing → do Step 2b (clean install)
+
+# Step 2b (only if Step 2 fails): Clean install
+# If rm -rf node_modules hangs (zombie esbuild processes hold locks), use:
+#   mv node_modules node_modules_old_$(date +%s)
+# Then: npm install
+# Then clean up: rm -rf node_modules_old_* &
 
 # Step 3: Start the server (run in background with run_in_background=true, timeout=600000)
 cd "/Users/bezhomatiashvili/Desktop/Automated Bot" && node node_modules/.bin/vite --host 127.0.0.1
@@ -36,8 +42,8 @@ cd "/Users/bezhomatiashvili/Desktop/Automated Bot" && node node_modules/.bin/vit
 - Always use `node node_modules/.bin/vite --host 127.0.0.1` — NOT `npx vite` (npx can download a different vite version and corrupt its cache) and NOT `npm run dev` (doesn't pass --host flag)
 - Run with `run_in_background=true` and `timeout=600000` so the process stays alive
 - Server URL: **http://127.0.0.1:5173/**
-- If rollup native binary or local vite binary is missing, a full `rm -rf node_modules package-lock.json && npm install` is required — this is a known npm bug with optional platform-specific dependencies
-- **NEVER run multiple `npm install` commands concurrently** — they corrupt each other's node_modules
+- If deps are missing, do a full clean install. If `rm -rf node_modules` hangs, use `mv node_modules node_modules_old_$(date +%s)` instead — zombie esbuild processes can hold file locks preventing deletion
+- **NEVER run multiple `npm install` commands concurrently** — they corrupt each other's node_modules and create zombie processes
 - If npx cache is corrupted, also clear it: `rm -rf ~/.npm/_npx/`
 
 ## Environment Setup
@@ -69,7 +75,7 @@ Two-panel SPA: `ChatPanel` (left) + `PipelinePanel` (right). `App.jsx` is the or
 ### API Proxy Layer
 All external API calls go through Vite dev proxy (or Express in production) to avoid CORS:
 - `/api/claude` → `api.anthropic.com/v1/messages`
-- `/api/nanobanana/*` → `nanobnana.com/api/v2/*`
+- `/api/nanobanana/*` → `api.nanobananaapi.ai/api/v1/nanobanana/*`
 - `/api/kling/*` → `api.klingai.com/v1/*`
 - `/api/elevenlabs/*` → `api.elevenlabs.io/v1/*`
 

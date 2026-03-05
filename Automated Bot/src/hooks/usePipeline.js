@@ -5,7 +5,7 @@ import { generateSpeech } from '../lib/elevenLabsApi'
 import { IMAGE_BATCH_SIZE, VIDEO_BATCH_SIZE } from '../lib/constants'
 import { supabase } from '../lib/supabase'
 
-export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projectId, onStageChange }) {
+export default function usePipeline({ apiKeys, voiceSettings, onMissingKeys, onActivity, projectId, onStageChange }) {
   const [scenes, setScenes] = useState([])
   const scenesRef = useRef(scenes)
   const [stage, setStage] = useState('ideas')
@@ -215,7 +215,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
 
       if (!fullText) throw new Error('No sentence text to generate audio from')
 
-      const { audioUrl } = await generateSpeech(apiKeys.elevenLabs, fullText, undefined, controller.signal)
+      const { audioUrl } = await generateSpeech(apiKeys.elevenLabs, fullText, voiceSettings, controller.signal)
       setTranscriptAudio({ status: 'done', url: audioUrl })
       onActivity?.('audio_done', 'Transcript audio done')
     } catch (err) {
@@ -226,7 +226,7 @@ export default function usePipeline({ apiKeys, onMissingKeys, onActivity, projec
     } finally {
       transcriptAudioAbortRef.current = null
     }
-  }, [apiKeys.elevenLabs, onActivity, updateStage])
+  }, [apiKeys.elevenLabs, voiceSettings, onActivity, updateStage])
 
   const cancelSceneGeneration = useCallback((type, idx) => {
     const key = `${type}-${idx}`

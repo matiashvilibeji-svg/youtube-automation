@@ -9,8 +9,9 @@ async function imageUrlToBase64(url, signal) {
     return url.substring(commaIndex + 1)
   }
 
-  // HTTP URLs: fetch and convert with chunked string building (avoids O(n²) concatenation)
-  const res = await fetch(url, { signal })
+  // HTTP URLs: fetch via server-side proxy to avoid CORS restrictions from CDN origins
+  const proxyUrl = `/api/fetch-image?url=${encodeURIComponent(url)}`
+  const res = await fetch(proxyUrl, { signal })
   if (!res.ok) throw new Error(`Failed to fetch image for base64 conversion (${res.status})`)
   const buffer = await res.arrayBuffer()
   const bytes = new Uint8Array(buffer)

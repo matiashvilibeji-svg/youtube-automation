@@ -4,7 +4,7 @@ import { validatePipelineData, parsePipelineResponse } from '../lib/pipelinePars
 import { buildProjectContext } from '../lib/constants'
 import { supabase } from '../lib/supabase'
 
-export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingKeys, projectId, scenes, stage, projectInstructions }) {
+export default function useChat({ onPipelineData, onToolUse, projectId, scenes, stage, projectInstructions }) {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const abortRef = useRef(null)
@@ -91,11 +91,6 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
   }, [])
 
   const send = useCallback(async (text) => {
-    if (!apiKeys.claude) {
-      onMissingKeys()
-      return
-    }
-
     const userMsg = { role: 'user', content: text }
     setMessages((prev) => [...prev, userMsg])
     setIsLoading(true)
@@ -119,7 +114,7 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
         ideaInstructions, scriptInstructions, characterDescription,
         imageInstructions, videoInstructions, sampleInput, sampleOutput,
       } = instructionsRef.current || {}
-      const response = await sendMessage(apiKeys.claude, conversationHistory, abortRef.current.signal, {
+      const response = await sendMessage(conversationHistory, abortRef.current.signal, {
         projectContext, ideaInstructions, scriptInstructions, characterDescription,
         imageInstructions, videoInstructions, sampleInput, sampleOutput,
       })
@@ -194,7 +189,7 @@ export default function useChat({ apiKeys, onPipelineData, onToolUse, onMissingK
       setIsLoading(false)
       abortRef.current = null
     }
-  }, [apiKeys.claude, onPipelineData, onToolUse, onMissingKeys, saveMessage, enrichWithSceneRefs])
+  }, [onPipelineData, onToolUse, saveMessage, enrichWithSceneRefs])
 
   const clearMessages = useCallback(async () => {
     setMessages([])

@@ -1,5 +1,8 @@
 import { IMAGE_POLL_INTERVAL, IMAGE_POLL_MAX_ATTEMPTS } from './constants'
 
+// Nano Banana 2 API
+// Docs: https://docs.nanobananaapi.ai/quickstart
+
 async function fetchGenerate(apiKey, prompt, signal) {
   const res = await fetch('/api/nanobanana/generate', {
     method: 'POST',
@@ -9,9 +12,9 @@ async function fetchGenerate(apiKey, prompt, signal) {
     },
     body: JSON.stringify({
       prompt,
-      aspect_ratio: '9:16',
-      size: '2K',
-      format: 'png',
+      type: 'TEXTTOIAMGE',
+      callBackUrl: 'https://example.com/webhook',
+      numImages: 1,
     }),
     signal,
   })
@@ -47,8 +50,9 @@ export async function generateImage(apiKey, prompt, signal) {
   }
 
   const data = await res.json()
-  const taskId = data?.data?.task_id
-  if (!taskId) throw new Error('No task_id returned from Nano Banana')
+  console.log('[NanoBanana] Generate response:', JSON.stringify(data))
+  const taskId = data?.data?.taskId || data?.taskId || data?.data?.task_id || data?.task_id
+  if (!taskId) throw new Error('No taskId returned from Nano Banana: ' + JSON.stringify(data).substring(0, 500))
   return taskId
 }
 
@@ -56,7 +60,7 @@ export async function pollImageStatus(apiKey, taskId, signal) {
   for (let attempt = 0; attempt < IMAGE_POLL_MAX_ATTEMPTS; attempt++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-    const res = await fetch(`/api/nanobanana/status?task_id=${taskId}`, {
+    const res = await fetch(`/api/nanobanana/record-info?taskId=${taskId}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
@@ -69,21 +73,45 @@ export async function pollImageStatus(apiKey, taskId, signal) {
     }
 
     const data = await res.json()
-    console.log(`[NanoBanana] Poll #${attempt + 1} response:`, JSON.stringify(data).substring(0, 200))
-    const status = data?.data?.status
+    const flag = data?.data?.successFlag
+    console.log(`[NanoBanana] Poll #${attempt + 1} successFlag=${flag}`, JSON.stringify(data).substring(0, 500))
 
-    if (status === 1) {
-      const urls = JSON.parse(data.data.response)
-      const url = urls[0]
-      if (!url) throw new Error('Completed but no image URL in response')
-      return url
+    // 2 = CREATE_TASK_FAILED, 3 = GENERATE_FAILED
+    if (flag === 2 || flag === 3) {
+      throw new Error(`Image generation failed: ${data.data?.errorMessage || 'unknown'}`)
     }
 
-    if (status === -1) {
-      throw new Error(`Image generation failed: ${data.data?.error_message || 'unknown'}`)
+    // 1 = SUCCESS
+    if (flag === 1) {
+      const d = data.data
+      let url = null
+
+      // Primary location per docs
+      if (d.response) {
+        if (typeof d.response === 'object') {
+          url = d.response.resultImageUrl
+        } else if (typeof d.response === 'string') {
+          try {
+            const parsed = JSON.parse(d.response)
+            url = parsed.resultImageUrl || parsed.url || parsed.image_url
+          } catch {
+            if (d.response.startsWith('http')) url = d.response
+          }
+        }
+      }
+      // Fallbacks
+      if (!url) url = d.resultImageUrl || d.output_url || d.image_url || d.url
+
+      console.log('[NanoBanana] Completed! Extracted URL:', url)
+      if (!url) {
+        console.error('[NanoBanana] Full completed response:', JSON.stringify(data))
+        throw new Error('Image completed but could not find URL in response')
+      }
+      if (typeof url === 'string') return url
+      throw new Error('Image completed but URL is not a string: ' + JSON.stringify(url))
     }
 
-    // Wait before next poll
+    // 0 = GENERATING — wait before next poll
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(resolve, IMAGE_POLL_INTERVAL)
       signal?.addEventListener('abort', () => {
@@ -99,7 +127,7 @@ export async function pollImageStatus(apiKey, taskId, signal) {
 export async function generateAndPollImage(apiKey, prompt, signal) {
   console.log('[NanoBanana] Starting generate...')
   const taskId = await generateImage(apiKey, prompt, signal)
-  console.log('[NanoBanana] Got task_id:', taskId, '— starting poll...')
+  console.log('[NanoBanana] Got taskId:', taskId, '— starting poll...')
   const imageUrl = await pollImageStatus(apiKey, taskId, signal)
   console.log('[NanoBanana] Poll complete, imageUrl:', imageUrl)
   return { taskId, imageUrl }

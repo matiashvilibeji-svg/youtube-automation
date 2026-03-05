@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "node server/proxy.js"
+    "serve": "node server/proxy.js",
+    "dev:static": "node server/dev-static.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1",
+    "esbuild": "^0.25.12",
     "express": "^5.1.0",
     "http-proxy-middleware": "^3.0.5",
     "jszip": "^3.10.1",
@@ -18,10 +21,10 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.5.2",
+    "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "vite": "^6.3.5"
+    "vite": "^6.4.1"
   }
 }

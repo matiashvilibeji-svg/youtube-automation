@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { downloadFile, downloadText } from '../lib/download'
+import { ELEVENLABS_MODELS } from '../lib/constants'
 
 export default function TranscriptPanel({
   scenes,
@@ -7,9 +8,13 @@ export default function TranscriptPanel({
   onGenerate,
   onCancel,
   isRunning,
+  voiceSettings,
+  onSaveVoiceSettings,
+  voices,
 }) {
   const audioRef = useRef(null)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [settingsExpanded, setSettingsExpanded] = useState(false)
 
   const status = transcriptAudio?.status || 'pending'
   const audioUrl = transcriptAudio?.url || null
@@ -26,8 +31,128 @@ export default function TranscriptPanel({
     }
   }, [])
 
+  const updateSetting = useCallback((key, value) => {
+    onSaveVoiceSettings?.({ ...voiceSettings, [key]: value })
+  }, [voiceSettings, onSaveVoiceSettings])
+
+  const handleVoiceChange = useCallback((voiceId) => {
+    const voice = voices.find((v) => v.voice_id === voiceId)
+    onSaveVoiceSettings?.({
+      ...voiceSettings,
+      voiceId,
+      voiceName: voice?.name || voiceSettings?.voiceName || 'Unknown',
+    })
+  }, [voiceSettings, voices, onSaveVoiceSettings])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden px-6 pb-2">
+      {/* Voice Settings toggle */}
+      <button
+        onClick={handleToggleSettings}
+        className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-gray-400 transition-colors mb-2 self-start"
+      >
+        <span className={`transition-transform ${settingsExpanded ? 'rotate-90' : ''}`}>▶</span>
+        Voice Settings
+        {voiceSettings?.voiceName && (
+          <span className="text-gray-600 ml-1">({voiceSettings.voiceName})</span>
+        )}
+      </button>
+
+      {/* Voice Settings panel */}
+      {settingsExpanded && (
+        <div className="p-3 mb-3 bg-gray-900/80 rounded-lg border border-gray-800/50 space-y-3">
+          {/* Voice select */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Voice</label>
+            <select
+              value={voiceSettings?.voiceId || ''}
+              onChange={(e) => handleVoiceChange(e.target.value)}
+              className="flex-1 text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500/50"
+            >
+              {voices.map((v) => (
+                <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Model select */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Model</label>
+            <select
+              value={voiceSettings?.modelId || ''}
+              onChange={(e) => updateSetting('modelId', e.target.value)}
+              className="flex-1 text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500/50"
+            >
+              {ELEVENLABS_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stability slider */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Stability</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={voiceSettings?.stability ?? 0.5}
+              onChange={(e) => updateSetting('stability', parseFloat(e.target.value))}
+              className="flex-1 accent-purple-500 h-1"
+            />
+            <span className="text-[10px] text-gray-500 w-8 text-right">{(voiceSettings?.stability ?? 0.5).toFixed(2)}</span>
+          </div>
+
+          {/* Similarity Boost slider */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Similarity</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={voiceSettings?.similarityBoost ?? 0.75}
+              onChange={(e) => updateSetting('similarityBoost', parseFloat(e.target.value))}
+              className="flex-1 accent-purple-500 h-1"
+            />
+            <span className="text-[10px] text-gray-500 w-8 text-right">{(voiceSettings?.similarityBoost ?? 0.75).toFixed(2)}</span>
+          </div>
+
+          {/* Style slider */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Style</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={voiceSettings?.style ?? 0}
+              onChange={(e) => updateSetting('style', parseFloat(e.target.value))}
+              className="flex-1 accent-purple-500 h-1"
+            />
+            <span className="text-[10px] text-gray-500 w-8 text-right">{(voiceSettings?.style ?? 0).toFixed(2)}</span>
+          </div>
+
+          {/* Speaker Boost toggle */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-400 w-24 shrink-0">Speaker Boost</label>
+            <button
+              onClick={() => updateSetting('useSpeakerBoost', !voiceSettings?.useSpeakerBoost)}
+              className={`w-8 h-4 rounded-full transition-colors relative ${
+                voiceSettings?.useSpeakerBoost ? 'bg-purple-500' : 'bg-gray-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                  voiceSettings?.useSpeakerBoost ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Audio controls bar */}
       <div className="flex items-center gap-3 mb-3 p-3 bg-gray-900/80 rounded-lg border border-gray-800/50">
         {status === 'done' && audioUrl ? (

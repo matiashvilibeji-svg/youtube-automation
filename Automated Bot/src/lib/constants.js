@@ -306,4 +306,57 @@ export const ELEVENLABS_DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // "Adam" narr
 export const ELEVENLABS_MODEL_ID = 'eleven_multilingual_v2'
 export const AUDIO_BATCH_SIZE = 3
 
+export const ELEVENLABS_MODELS = [
+  { id: 'eleven_multilingual_v2', label: 'Multilingual v2' },
+  { id: 'eleven_turbo_v2_5', label: 'Turbo v2.5' },
+  { id: 'eleven_flash_v2_5', label: 'Flash v2.5' },
+  { id: 'eleven_v3', label: 'v3' },
+]
+
+export const ELEVENLABS_VOICES = [
+  { voice_id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', category: 'premade' },
+  { voice_id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', category: 'premade' },
+  { voice_id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', category: 'premade' },
+  { voice_id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', category: 'premade' },
+  { voice_id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', category: 'premade' },
+  { voice_id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', category: 'premade' },
+  { voice_id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', category: 'premade' },
+  { voice_id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', category: 'premade' },
+  { voice_id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', category: 'premade' },
+  { voice_id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', category: 'premade' },
+  { voice_id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', category: 'premade' },
+  { voice_id: 'CYw3kZ02Hs0563khs1Fj', name: 'Dave', category: 'premade' },
+  { voice_id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy', category: 'premade' },
+  { voice_id: '29vD33N1CtxCmqQRPOHJ', name: 'Drew', category: 'premade' },
+  { voice_id: 'LcfcDJNUP1GQjkzn1xUU', name: 'Emily', category: 'premade' },
+  { voice_id: 'g5CIjZEefAph4nQFvHAz', name: 'Ethan', category: 'premade' },
+  { voice_id: 'D38z5RcWu1voky8WS1ja', name: 'Fin', category: 'premade' },
+  { voice_id: 'jsCqWAovK2LkecY7zXl4', name: 'Freya', category: 'premade' },
+  { voice_id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', category: 'premade' },
+  { voice_id: 'jBpfuIE2acCO8z3wKNLl', name: 'Gigi', category: 'premade' },
+  { voice_id: 'zcAOhNBS3c14rBihAFp1', name: 'Giovanni', category: 'premade' },
+  { voice_id: 'z9fAnlkpzviPz146aGWa', name: 'Glinda', category: 'premade' },
+  { voice_id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Grace', category: 'premade' },
+  { voice_id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry', category: 'premade' },
+  { voice_id: 'ZQe5CZNOzWyzPSCn5a3c', name: 'James', category: 'premade' },
+  { voice_id: 'bVMeCyTHy58xNoL34h3p', name: 'Jeremy', category: 'premade' },
+  { voice_id: 't0jbNlBVZ17f02VDIeMI', name: 'Jessie', category: 'premade' },
+  { voice_id: 'Zlb1dXrM653N07WRdFW3', name: 'Joseph', category: 'premade' },
+  { voice_id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', category: 'premade' },
+  { voice_id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', category: 'premade' },
+  { voice_id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', category: 'premade' },
+  { voice_id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', category: 'premade' },
+  { voice_id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Michael', category: 'premade' },
+  { voice_id: 'zrHiDhphv9ZnVXBqCLjz', name: 'Mimi', category: 'premade' },
+  { voice_id: 'piTKgcLEGmPE4e6mEKli', name: 'Nicole', category: 'premade' },
+  { voice_id: 'ODq5zmih8GrVes37Dizd', name: 'Patrick', category: 'premade' },
+  { voice_id: '5Q0t7uMcjvnagumLfvZi', name: 'Paul', category: 'premade' },
+  { voice_id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', category: 'premade' },
+  { voice_id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam', category: 'premade' },
+  { voice_id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', category: 'premade' },
+  { voice_id: 'pMsXgVXv3BLzUgSXRplE', name: 'Serena', category: 'premade' },
+  { voice_id: 'GBv7mTt0atIp3Br8iCZE', name: 'Thomas', category: 'premade' },
+]
+
 export const STORAGE_KEY = 'vp-api-keys'
+export const VOICE_STORAGE_KEY = 'vp-voice-settings'

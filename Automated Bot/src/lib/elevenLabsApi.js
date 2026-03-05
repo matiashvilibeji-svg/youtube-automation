@@ -3,8 +3,22 @@ import { ELEVENLABS_DEFAULT_VOICE_ID, ELEVENLABS_MODEL_ID } from './constants'
 /**
  * Generate speech audio from text using the ElevenLabs TTS API.
  * Returns a blob URL suitable for <audio src>.
+ *
+ * @param {string} apiKey
+ * @param {string} text
+ * @param {object} options - Voice settings (voiceId, modelId, stability, similarityBoost, style, useSpeakerBoost)
+ * @param {AbortSignal} signal
  */
-export async function generateSpeech(apiKey, text, voiceId = ELEVENLABS_DEFAULT_VOICE_ID, signal) {
+export async function generateSpeech(apiKey, text, options = {}, signal) {
+  const {
+    voiceId = ELEVENLABS_DEFAULT_VOICE_ID,
+    modelId = ELEVENLABS_MODEL_ID,
+    stability = 0.5,
+    similarityBoost = 0.75,
+    style = 0.0,
+    useSpeakerBoost = false,
+  } = options || {}
+
   const res = await fetch(`/api/elevenlabs/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -13,10 +27,12 @@ export async function generateSpeech(apiKey, text, voiceId = ELEVENLABS_DEFAULT_
     },
     body: JSON.stringify({
       text,
-      model_id: ELEVENLABS_MODEL_ID,
+      model_id: modelId,
       voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
+        stability,
+        similarity_boost: similarityBoost,
+        style,
+        use_speaker_boost: useSpeakerBoost,
       },
     }),
     signal,

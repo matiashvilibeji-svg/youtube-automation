@@ -25,6 +25,9 @@ export default function PipelinePanel({
   transcriptAudio,
   onGenerateTranscriptAudio,
   onCancelTranscriptAudio,
+  voiceSettings,
+  onSaveVoiceSettings,
+  voices,
 }) {
   const totalScenes = scenes.length
   const imagesDone = scenes.filter((s) => s.imgStatus === 'done').length
@@ -188,6 +191,9 @@ export default function PipelinePanel({
               onGenerate={onGenerateTranscriptAudio}
               onCancel={onCancelTranscriptAudio}
               isRunning={isRunning}
+              voiceSettings={voiceSettings}
+              onSaveVoiceSettings={onSaveVoiceSettings}
+              voices={voices}
             />
           )}
 
